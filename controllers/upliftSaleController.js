@@ -386,3 +386,93 @@ exports.deleteUpliftSale = async (req, res) => {
     });
   }
 };
+
+// Get uplift sales by user ID
+exports.getUpliftSalesByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { status, startDate, endDate, page = 1, limit = 20 } = req.query;
+    
+    // Validate userId
+    if (!userId || isNaN(parseInt(userId))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid user ID is required'
+      });
+    }
+
+    const where = {
+      userId: parseInt(userId)
+    };
+    
+    // Add optional filters
+    if (status) where.status = status;
+    if (startDate && endDate) {
+      where.createdAt = {
+        gte: new Date(startDate),
+        lte: new Date(endDate)
+      };
+    }
+
+    // Calculate pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    // Get total count for pagination
+    const totalCount = await prisma.upliftSale.count({ where });
+    const totalPages = Math.ceil(totalCount / take);
+
+    const upliftSales = await prisma.upliftSale.findMany({
+      where,
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                category: true,
+                unit_cost: true,
+                description: true,
+                image: true
+              }
+            }
+          }
+        },
+        client: {
+          select: {
+            id: true,
+            name: true,
+            contact: true,
+            address: true,
+            region: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      skip,
+      take
+    });
+
+    res.json({
+      success: true,
+      data: upliftSales,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages,
+        totalCount,
+        hasNextPage: parseInt(page) < totalPages,
+        hasPreviousPage: parseInt(page) > 1
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching uplift sales by user ID:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error fetching uplift sales',
+      error: error.message 
+    });
+  }
+};

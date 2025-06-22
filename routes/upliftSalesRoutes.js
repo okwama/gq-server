@@ -12,6 +12,9 @@ router.post('/', upliftSaleController.createUpliftSale);
 // Get all uplift sales with optional filters
 router.get('/', upliftSaleController.getUpliftSales);
 
+// Get uplift sales by user ID
+router.get('/user/:userId', upliftSaleController.getUpliftSalesByUserId);
+
 // Get a single uplift sale by ID
 router.get('/:id', upliftSaleController.getUpliftSaleById);
 
