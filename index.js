@@ -33,6 +33,7 @@ const taskRoutes = require('./routes/taskRoutes');
 const storeRoutes = require('./routes/storeRoutes');
 const targetRoutes = require('./routes/targetRoutes');
 const routeRoutes = require('./routes/routeRoutes');
+const clientStockRoutes = require('./routes/clientStockRoutes');
 
 const app = express();
 app.use(express.json());
@@ -152,6 +153,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/targets', targetRoutes);
 app.use('/api/routes', routeRoutes);
+app.use('/api/client-stock', clientStockRoutes);
 
 // Handle 404 Errors
 app.use((req, res, next) => {
