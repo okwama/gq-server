@@ -384,108 +384,143 @@ exports.bulkUpdateClientStock = async (req, res) => {
       });
     }
 
-    const results = [];
-    const errors = [];
-
-    for (const update of updates) {
-      try {
-        const { clientId, productId, quantity, operation = 'set' } = update;
-
-        if (!clientId || !productId || quantity === undefined) {
-          errors.push({
-            clientId,
-            productId,
-            error: 'clientId, productId, and quantity are required'
-          });
-          continue;
-        }
-
-        // Find existing stock
-        const existingStock = await prisma.clientStock.findUnique({
-          where: {
-            clientId_productId: {
-              clientId: parseInt(clientId),
-              productId: parseInt(productId)
-            }
-          }
+    // Validate all updates first
+    const validationErrors = [];
+    const validUpdates = updates.filter(update => {
+      const { clientId, productId, quantity } = update;
+      if (!clientId || !productId || quantity === undefined) {
+        validationErrors.push({
+          clientId,
+          productId,
+          error: 'clientId, productId, and quantity are required'
         });
-
-        let newQuantity;
-        if (existingStock) {
-          switch (operation) {
-            case 'add':
-              newQuantity = existingStock.quantity + parseInt(quantity);
-              break;
-            case 'subtract':
-              newQuantity = existingStock.quantity - parseInt(quantity);
-              if (newQuantity < 0) {
-                errors.push({
-                  clientId,
-                  productId,
-                  error: 'Cannot subtract more than available quantity'
-                });
-                continue;
-              }
-              break;
-            case 'set':
-            default:
-              newQuantity = parseInt(quantity);
-              if (newQuantity < 0) {
-                errors.push({
-                  clientId,
-                  productId,
-                  error: 'Quantity cannot be negative'
-                });
-                continue;
-              }
-              break;
-          }
-
-          const updatedStock = await prisma.clientStock.update({
-            where: {
-              clientId_productId: {
-                clientId: parseInt(clientId),
-                productId: parseInt(productId)
-              }
-            },
-            data: { quantity: newQuantity }
-          });
-          results.push(updatedStock);
-        } else {
-          // Create new stock entry
-          if (operation === 'subtract') {
-            errors.push({
-              clientId,
-              productId,
-              error: 'Cannot subtract from non-existent stock'
-            });
-            continue;
-          }
-
-          const newStock = await prisma.clientStock.create({
-            data: {
-              clientId: parseInt(clientId),
-              productId: parseInt(productId),
-              quantity: parseInt(quantity)
-            }
-          });
-          results.push(newStock);
-        }
-      } catch (error) {
-        errors.push({
-          clientId: update.clientId,
-          productId: update.productId,
-          error: error.message
-        });
+        return false;
       }
+      if (quantity < 0 && update.operation === 'set') {
+        validationErrors.push({
+          clientId,
+          productId,
+          error: 'Quantity cannot be negative'
+        });
+        return false;
+      }
+      return true;
+    });
+
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation errors found',
+        errors: validationErrors
+      });
     }
+
+    // Process updates in a single transaction for better performance
+    const result = await prisma.$transaction(async (tx) => {
+      const results = [];
+      const errors = [];
+
+      // Batch fetch existing stock records
+      const stockKeys = validUpdates.map(update => ({
+        clientId: parseInt(update.clientId),
+        productId: parseInt(update.productId)
+      }));
+
+      const existingStocks = await tx.clientStock.findMany({
+        where: {
+          OR: stockKeys.map(key => ({
+            clientId: key.clientId,
+            productId: key.productId
+          }))
+        }
+      });
+
+      // Create a map for quick lookup
+      const stockMap = new Map();
+      existingStocks.forEach(stock => {
+        stockMap.set(`${stock.clientId}-${stock.productId}`, stock);
+      });
+
+      // Process updates
+      for (const update of validUpdates) {
+        try {
+          const { clientId, productId, quantity, operation = 'set' } = update;
+          const key = `${parseInt(clientId)}-${parseInt(productId)}`;
+          const existingStock = stockMap.get(key);
+
+          let newQuantity;
+          if (existingStock) {
+            switch (operation) {
+              case 'add':
+                newQuantity = existingStock.quantity + parseInt(quantity);
+                break;
+              case 'subtract':
+                newQuantity = existingStock.quantity - parseInt(quantity);
+                if (newQuantity < 0) {
+                  errors.push({
+                    clientId,
+                    productId,
+                    error: 'Cannot subtract more than available quantity'
+                  });
+                  continue;
+                }
+                break;
+              case 'set':
+              default:
+                newQuantity = parseInt(quantity);
+                break;
+            }
+
+            const updatedStock = await tx.clientStock.update({
+              where: {
+                clientId_productId: {
+                  clientId: parseInt(clientId),
+                  productId: parseInt(productId)
+                }
+              },
+              data: { quantity: newQuantity }
+            });
+            results.push(updatedStock);
+          } else {
+            // Create new stock entry
+            if (operation === 'subtract') {
+              errors.push({
+                clientId,
+                productId,
+                error: 'Cannot subtract from non-existent stock'
+              });
+              continue;
+            }
+
+            const newStock = await tx.clientStock.create({
+              data: {
+                clientId: parseInt(clientId),
+                productId: parseInt(productId),
+                quantity: parseInt(quantity)
+              }
+            });
+            results.push(newStock);
+          }
+        } catch (error) {
+          errors.push({
+            clientId: update.clientId,
+            productId: update.productId,
+            error: error.message
+          });
+        }
+      }
+
+      return { results, errors };
+    }, {
+      timeout: 30000 // 30 seconds timeout for bulk operations
+    });
 
     res.json({
       success: true,
-      message: `Processed ${results.length} updates successfully`,
+      message: `Processed ${result.results.length} updates successfully`,
       data: {
-        successful: results,
-        errors: errors
+        successful: result.results,
+        errors: result.errors
       }
     });
   } catch (error) {

@@ -6,6 +6,7 @@ datasource db {
   provider          = "mysql"
   url               = env("DATABASE_URL")
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+  relationMode      = "prisma"
 }
 
 model User {
@@ -250,15 +251,17 @@ model Country {
 }
 
 model Category {
-  id   Int    @id @default(autoincrement())
-  name String
+  id           Int           @id @default(autoincrement())
+  name         String
+  priceOptions PriceOption[]
 }
 
 model PriceOption {
-  id         Int    @id @default(autoincrement())
+  id         Int      @id @default(autoincrement())
   option     String
   value      Int
   categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id])
 
   @@index([categoryId], map: "PriceOption_categoryId_fkey")
 }
@@ -268,9 +271,11 @@ model StoreQuantity {
   quantity  Int
   storeId   Int
   productId Int
+  store     Stores   @relation(fields: [storeId], references: [id])
 
   @@index([productId], map: "StoreQuantity_productId_fkey")
   @@index([storeId], map: "StoreQuantity_storeId_fkey")
+  Product Product[]
 }
 
 model Stores {
@@ -283,25 +288,48 @@ model Stores {
   status      Int    @default(0)
 
   @@index([regionId], map: "Stores_regionId_fkey")
+  StoreQuantity StoreQuantity[]
 }
 
 model Product {
-  id             Int              @id @default(autoincrement())
-  name           String
-  category_id    Int
-  category       String
-  unit_cost      Decimal          @db.Decimal(11, 2)
-  description    String?
-  currentStock   Int?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  clientId       Int?
-  image          String?          @default("")
-  UpliftSaleItem UpliftSaleItem[]
+  id                   Int                    @id @default(autoincrement())
+  name                 String
+  category_id          Int
+  category             String
+  unit_cost            Decimal                @db.Decimal(11, 2)
+  description          String?
+  currentStock         Int?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  clientId             Int?
+  image                String?                @default("")
+  orderItems           OrderItem[]
+  client               Clients?               @relation(fields: [clientId], references: [id])
+  ProductDetails       ProductDetails[]
+  purchaseHistory      PurchaseHistory[]
+  PurchaseItem         PurchaseItem[]
+  storeQuantities      StoreQuantity[]
+  TransferHistory      TransferHistory[]
+  UpliftSaleItem       UpliftSaleItem[]
+  product_transactions product_transactions[]
 
   @@index([clientId], map: "Product_clientId_fkey")
+  ClientStock ClientStock[]
 }
+model product_transactions {
+  id               Int      @id @default(autoincrement())
+  product_id       Int
+  transaction_date DateTime @db.DateTime(0)
+  quantity_in      Int
+  quantity_out     Int?     @default(0)
+  reference        String   @db.VarChar(50)
+  reference_id     Int
+  balance          Int
+  notes            String?  @db.Text
+  Product          Product  @relation(fields: [product_id], references: [id], onUpdate: Restrict, map: "product_transactions_ibfk_1")
 
+  @@index([product_id], map: "product_id")
+}
 model TransferHistory {
   id            Int      @id @default(autoincrement())
   productId     Int
@@ -314,6 +342,7 @@ model TransferHistory {
   @@index([fromStoreId], map: "TransferHistory_fromStoreId_fkey")
   @@index([productId], map: "TransferHistory_productId_fkey")
   @@index([toStoreId], map: "TransferHistory_toStoreId_fkey")
+  Product Product[]
 }
 
 model ProductDetails {
@@ -331,6 +360,7 @@ model ProductDetails {
 
   @@index([productId], map: "ProductDetails_productId_fkey")
   @@index([storeId], map: "ProductDetails_storeId_fkey")
+  Product Product[]
 }
 
 model ProductReturn {
@@ -427,6 +457,7 @@ model PurchaseItem {
 
   @@index([productId], map: "PurchaseItem_productId_fkey")
   @@index([purchaseId], map: "PurchaseItem_purchaseId_fkey")
+  Product Product[]
 }
 
 model PurchaseHistory {
@@ -440,6 +471,7 @@ model PurchaseHistory {
 
   @@index([productId], map: "PurchaseHistory_productId_fkey")
   @@index([storeId], map: "PurchaseHistory_storeId_fkey")
+  Product Product[]
 }
 
 model Clients {
@@ -475,6 +507,8 @@ model Clients {
   @@index([countryId], map: "Clients_countryId_fkey")
   @@index([salesRepId], map: "Clients_salesRepId_fkey")
   JourneyPlan JourneyPlan[]
+  Product Product[]
+  ClientStock ClientStock[]
 }
 
 model Task {
@@ -563,6 +597,7 @@ model OrderItem {
   @@index([orderId])
   @@index([priceOptionId])
   @@index([productId], map: "OrderItem_productId_fkey")
+  Product Product[]
 }
 
 model MyOrder {
@@ -741,4 +776,15 @@ enum ReportType {
   PRODUCT_SAMPLE
   PRODUCT_RETURN
   FEEDBACK
+}
+
+model ClientStock {
+  id        Int      @id @default(autoincrement())
+  quantity  Int
+  clientId  Int
+  productId Int
+  Clients   Clients  @relation(fields: [clientId], references: [id])
+  Product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([clientId, productId])
 }

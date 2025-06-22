@@ -70,7 +70,9 @@ exports.createUpliftSale = async (req, res) => {
         });
 
         if (!clientStock || clientStock.quantity < item.quantity) {
-          throw new Error(`Not enough stock for product ID ${item.productId}. Available: ${clientStock?.quantity || 0}, Requested: ${item.quantity}`);
+          const available = clientStock?.quantity || 0;
+          const requested = item.quantity;
+          throw new Error(`Insufficient stock for product ID ${item.productId}. Available: ${available}, Requested: ${requested}. Please add stock before proceeding with the sale.`);
         }
 
         const product = await tx.product.findUnique({
@@ -137,6 +139,26 @@ exports.createUpliftSale = async (req, res) => {
   } catch (error) {
     console.error('[UpliftSale] Error creating uplift sale:', error);
     console.error('[UpliftSale] Error stack:', error.stack);
+    
+    // Handle insufficient stock error specifically
+    if (error.message.includes('Not enough stock')) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Insufficient stock',
+        error: error.message,
+        type: 'INSUFFICIENT_STOCK'
+      });
+    }
+    
+    // Handle other validation errors
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Resource not found',
+        error: error.message
+      });
+    }
+    
     res.status(500).json({ 
       success: false,
       message: 'Error creating uplift sale',
