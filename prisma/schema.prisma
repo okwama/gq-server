@@ -483,6 +483,34 @@ model ProductReturn {
   @@index([clientId])
 }
 
+model routes {
+  id           Int    @id @default(autoincrement())
+  name         String @db.VarChar(100)
+  region       Int
+  region_name  String @db.VarChar(100)
+  country_id   Int
+  country_name String @db.VarChar(100)
+  leader_id    Int
+  leader_name  String @db.VarChar(100)
+  status       Int
+}
+
+model tasks {
+  id           Int       @id @default(autoincrement())
+  title        String
+  description  String    @db.Text
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
+  isCompleted  Boolean   @default(false)
+  priority     String    @default("medium")
+  status       String    @default("pending")
+  salesRepId   Int
+  assignedById Int?
+
+  @@index([assignedById])
+  @@index([salesRepId], map: "tasks_salesRepId_fkey")
+}
+
 enum ReportType {
   PRODUCT_AVAILABILITY
   VISIBILITY_ACTIVITY
