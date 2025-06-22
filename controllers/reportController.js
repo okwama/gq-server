@@ -63,10 +63,10 @@ const createReport = async (req, res) => {
             case 'FEEDBACK':
                 specificReport = await prisma.feedbackReport.create({
                     data: { 
+                        reportId: report.id,
                         comment: details.comment || '',
-                        user: { connect: { id: userId } },
-                        client: { connect: { id: clientId } },
-                        Report: { connect: { id: report.id } }
+                        userId: userId,
+                        clientId: clientId
                     },
                 });
                 break;
@@ -98,11 +98,11 @@ const createReport = async (req, res) => {
             case 'VISIBILITY_ACTIVITY':
                 specificReport = await prisma.visibilityReport.create({
                     data: {
+                        reportId: report.id,
                         comment: details.comment || '',
                         imageUrl: details.imageUrl || '',
-                        user: { connect: { id: userId } },
-                        client: { connect: { id: clientId } },
-                        Report: { connect: { id: report.id } }
+                        userId: userId,
+                        clientId: clientId
                     },
                 });
                 break;

@@ -70,9 +70,51 @@ const authenticateToken = async (req, res, next) => {
       }
     } catch (jwtError) {
       if (jwtError.name === 'TokenExpiredError') {
+        console.log('🕐 Token expired for user, attempting automatic refresh...');
+        
+        // Try to extract user ID from expired token (without verification)
+        let expiredUserId;
+        try {
+          const decodedWithoutVerification = jwt.decode(token);
+          expiredUserId = decodedWithoutVerification?.userId;
+        } catch (decodeError) {
+          console.error('Could not decode expired token:', decodeError.message);
+        }
+        
+        if (expiredUserId) {
+          // Try to refresh tokens automatically
+          try {
+            const user = await prisma.salesRep.findUnique({
+              where: { id: expiredUserId },
+              include: {
+                Manager: true,
+                countryRelation: true
+              }
+            });
+
+            if (user) {
+              // Generate new tokens
+              const { newAccessToken, newRefreshToken } = await generateNewTokens(expiredUserId, user.role);
+
+              // Set the new access token in the request for this call
+              req.user = user;
+              req.token = newAccessToken;
+              req.tokensRefreshed = true;
+              req.newTokens = { accessToken: newAccessToken, refreshToken: newRefreshToken };
+
+              console.log('✅ Tokens automatically refreshed for expired token, user:', expiredUserId);
+              next();
+              return;
+            }
+          } catch (refreshError) {
+            console.error('❌ Failed to refresh expired token:', refreshError.message);
+          }
+        }
+        
         return res.status(401).json({ 
-          error: 'Access token expired. Please refresh your token.',
-          code: 'TOKEN_EXPIRED'
+          error: 'Access token expired. Please login again.',
+          code: 'TOKEN_EXPIRED',
+          autoRefreshFailed: true
         });
       }
       return res.status(401).json({ error: 'Invalid token' });
@@ -263,11 +305,20 @@ const createUser = async (req, res) => {
 const handleTokenRefresh = (req, res, next) => {
   // Store the original send function
   const originalSend = res.send;
+  const originalJson = res.json;
   
   // Override the send function
   res.send = function(data) {
     // If tokens were refreshed during this request, add them to the response
     if (req.tokensRefreshed && req.newTokens) {
+      console.log('🔄 Adding refreshed tokens to response headers for user:', req.user?.id);
+      
+      // Set headers with new tokens
+      res.setHeader('X-Token-Refreshed', 'true');
+      res.setHeader('X-New-Access-Token', req.newTokens.accessToken);
+      res.setHeader('X-New-Refresh-Token', req.newTokens.refreshToken);
+      res.setHeader('X-Token-Expires-In', '8h');
+      
       let responseData;
       
       try {
@@ -278,28 +329,50 @@ const handleTokenRefresh = (req, res, next) => {
           responseData = data;
         }
         
-        // Add token refresh information to the response
-        responseData.tokensRefreshed = true;
-        responseData.newAccessToken = req.newTokens.accessToken;
-        responseData.newRefreshToken = req.newTokens.refreshToken;
-        
-        // Set a custom header to indicate token refresh
-        res.setHeader('X-Token-Refreshed', 'true');
+        // Add token refresh information to the response body as well
+        if (responseData && typeof responseData === 'object') {
+          responseData.tokensRefreshed = true;
+          responseData.newAccessToken = req.newTokens.accessToken;
+          responseData.newRefreshToken = req.newTokens.refreshToken;
+          responseData.tokenExpiresIn = '8h';
+        }
         
         // Call the original send with modified data
         return originalSend.call(this, JSON.stringify(responseData));
       } catch (parseError) {
+        console.warn('Could not parse response data for token refresh:', parseError.message);
         // If we can't parse the response, just add headers
-        res.setHeader('X-Token-Refreshed', 'true');
-        res.setHeader('X-New-Access-Token', req.newTokens.accessToken);
-        res.setHeader('X-New-Refresh-Token', req.newTokens.refreshToken);
-        
         return originalSend.call(this, data);
       }
     }
     
     // Call the original send function
     return originalSend.call(this, data);
+  };
+  
+  // Override the json function as well
+  res.json = function(data) {
+    // If tokens were refreshed during this request, add them to the response
+    if (req.tokensRefreshed && req.newTokens) {
+      console.log('🔄 Adding refreshed tokens to JSON response for user:', req.user?.id);
+      
+      // Set headers with new tokens
+      res.setHeader('X-Token-Refreshed', 'true');
+      res.setHeader('X-New-Access-Token', req.newTokens.accessToken);
+      res.setHeader('X-New-Refresh-Token', req.newTokens.refreshToken);
+      res.setHeader('X-Token-Expires-In', '8h');
+      
+      // Add token refresh information to the response body
+      if (data && typeof data === 'object') {
+        data.tokensRefreshed = true;
+        data.newAccessToken = req.newTokens.accessToken;
+        data.newRefreshToken = req.newTokens.refreshToken;
+        data.tokenExpiresIn = '8h';
+      }
+    }
+    
+    // Call the original json function
+    return originalJson.call(this, data);
   };
   
   next();

@@ -15,19 +15,31 @@ exports.getClientStock = async (req, res) => {
       });
     }
 
-    const { clientId, productId, page = 1, limit = 20 } = req.query;
+    const { clientId: queryClientId, productId, page = 1, limit = 20 } = req.query;
+    const { clientId: paramClientId } = req.params;
     
+    // Use clientId from URL params if available, otherwise from query
+    const clientId = paramClientId || queryClientId;
+    
+    // Build where clause - only add conditions if values are provided
     const where = {};
-    if (clientId) where.clientId = parseInt(clientId);
-    if (productId) where.productId = parseInt(productId);
+    if (clientId) {
+      where.clientId = parseInt(clientId);
+    }
+    if (productId) {
+      where.productId = parseInt(productId);
+    }
     
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
+    // Only pass where object if it has conditions, otherwise pass undefined
+    const whereClause = Object.keys(where).length > 0 ? where : undefined;
+    
     const [clientStock, total] = await Promise.all([
       prisma.clientStock.findMany({
-        where,
+        where: whereClause,
         include: {
-          client: {
+          Clients: {
             select: {
               id: true,
               name: true,
@@ -36,7 +48,7 @@ exports.getClientStock = async (req, res) => {
               region: true
             }
           },
-          product: {
+          Product: {
             select: {
               id: true,
               name: true,
@@ -53,7 +65,7 @@ exports.getClientStock = async (req, res) => {
         skip,
         take: parseInt(limit)
       }),
-      prisma.clientStock.count({ where })
+      prisma.clientStock.count({ where: whereClause })
     ]);
 
     res.json({
@@ -84,7 +96,7 @@ exports.getClientStockById = async (req, res) => {
     const clientStock = await prisma.clientStock.findUnique({
       where: { id: parseInt(id) },
       include: {
-        client: {
+        Clients: {
           select: {
             id: true,
             name: true,
@@ -94,7 +106,7 @@ exports.getClientStockById = async (req, res) => {
             balance: true
           }
         },
-        product: {
+        Product: {
           select: {
             id: true,
             name: true,
@@ -141,7 +153,7 @@ exports.getClientStockByClientId = async (req, res) => {
       prisma.clientStock.findMany({
         where: { clientId: parseInt(clientId) },
         include: {
-          product: {
+          Product: {
             select: {
               id: true,
               name: true,
@@ -206,8 +218,8 @@ exports.upsertClientStock = async (req, res) => {
 
     // Verify client and product exist
     const [client, product] = await Promise.all([
-      prisma.clients.findUnique({ where: { id: parseInt(clientId) } }),
-      prisma.product.findUnique({ where: { id: parseInt(productId) } })
+      prisma.Clients.findUnique({ where: { id: parseInt(clientId) } }),
+      prisma.Product.findUnique({ where: { id: parseInt(productId) } })
     ]);
 
     if (!client) {
@@ -241,14 +253,14 @@ exports.upsertClientStock = async (req, res) => {
         quantity: parseInt(quantity)
       },
       include: {
-        client: {
+        Clients: {
           select: {
             id: true,
             name: true,
             contact: true
           }
         },
-        product: {
+        Product: {
           select: {
             id: true,
             name: true,
@@ -304,8 +316,8 @@ exports.updateClientStock = async (req, res) => {
 
     // Verify client and product exist
     const [client, product] = await Promise.all([
-      prisma.clients.findUnique({ where: { id: parseInt(clientId) } }),
-      prisma.product.findUnique({ where: { id: parseInt(productId) } })
+      prisma.Clients.findUnique({ where: { id: parseInt(clientId) } }),
+      prisma.Product.findUnique({ where: { id: parseInt(productId) } })
     ]);
 
     if (!client) {
@@ -585,7 +597,7 @@ exports.getLowStockAlerts = async (req, res) => {
     const lowStockItems = await prisma.clientStock.findMany({
       where,
       include: {
-        client: {
+        Clients: {
           select: {
             id: true,
             name: true,
@@ -593,7 +605,7 @@ exports.getLowStockAlerts = async (req, res) => {
             address: true
           }
         },
-        product: {
+        Product: {
           select: {
             id: true,
             name: true,
@@ -633,15 +645,18 @@ exports.getStockSummary = async (req, res) => {
       where.clientId = parseInt(clientId);
     }
 
+    // Only pass where object if it has conditions, otherwise pass undefined
+    const whereClause = Object.keys(where).length > 0 ? where : undefined;
+
     const [totalProducts, totalQuantity, lowStockCount, outOfStockCount] = await Promise.all([
-      prisma.clientStock.count({ where }),
+      prisma.clientStock.count({ where: whereClause }),
       prisma.clientStock.aggregate({
-        where,
+        where: whereClause,
         _sum: { quantity: true }
       }),
       prisma.clientStock.count({
         where: {
-          ...where,
+          ...whereClause,
           quantity: {
             lte: 10,
             gt: 0
@@ -650,7 +665,7 @@ exports.getStockSummary = async (req, res) => {
       }),
       prisma.clientStock.count({
         where: {
-          ...where,
+          ...whereClause,
           quantity: 0
         }
       })
@@ -671,52 +686,6 @@ exports.getStockSummary = async (req, res) => {
     res.status(500).json({ 
       success: false,
       message: 'Error fetching stock summary',
-      error: error.message 
-    });
-  }
-};
-
-// Get client stock for a specific client
-exports.getClientStock = async (req, res) => {
-  try {
-    // Check if feature is enabled
-    if (!CLIENT_STOCK_ENABLED) {
-      return res.status(403).json({
-        success: false,
-        message: 'Client stock feature is currently disabled'
-      });
-    }
-
-    const { clientId } = req.params;
-
-    const clientStock = await prisma.clientStock.findMany({
-      where: { clientId: parseInt(clientId) },
-      include: {
-        Product: {
-          select: {
-            id: true,
-            name: true,
-            category: true,
-            unit_cost: true,
-            description: true,
-            image: true
-          }
-        }
-      },
-      orderBy: {
-        id: 'desc'
-      }
-    });
-
-    res.json({
-      success: true,
-      data: clientStock
-    });
-  } catch (error) {
-    console.error('Error fetching client stock:', error);
-    res.status(500).json({ 
-      success: false,
-      message: 'Error fetching client stock',
       error: error.message 
     });
   }
