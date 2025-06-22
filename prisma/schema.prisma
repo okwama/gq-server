@@ -117,11 +117,11 @@ model SalesRep {
   visibilityReports    VisibilityReport[]
   leaves               Leave[]
   Manager              Manager?             @relation(fields: [managerId], references: [id])
-
-  Task          Task[]
-  ProductReturn ProductReturn[]
+  Task                 Task[]
+  ProductReturn        ProductReturn[]
 
   @@index([countryId], map: "SalesRep_countryId_fkey")
+  JourneyPlan JourneyPlan[]
 }
 
 model LoginHistory {
@@ -153,7 +153,7 @@ model Target {
   achieved      Boolean    @default(false)
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
-  SalesRep      SalesRep[]
+  salesRep      SalesRep   @relation(fields: [salesRepId], references: [id])
 
   @@index([salesRepId], map: "Target_salesRepId_fkey")
 }
@@ -179,7 +179,7 @@ model Manager {
   id         Int        @id @default(autoincrement())
   userId     Int        @unique
   department String?
-  SalesRep   SalesRep[]
+  salesReps  SalesRep[]
 
   @@map("managers")
 }
@@ -224,7 +224,7 @@ model Token {
   blacklisted Boolean    @default(false)
   lastUsedAt  DateTime?
   tokenType   String     @default("access")
-  SalesRep    SalesRep[]
+  salesRep    SalesRep   @relation(fields: [salesRepId], references: [id])
 
   @@index([salesRepId])
   @@index([blacklisted])
@@ -243,11 +243,10 @@ model Regions {
 }
 
 model Country {
-  id     Int    @id @default(autoincrement())
-  name   String
-  status Int?   @default(0)
-
-  SalesRep SalesRep[]
+  id       Int       @id @default(autoincrement())
+  name     String
+  status   Int?      @default(0)
+  salesRep SalesRep[]
 }
 
 model Category {
@@ -475,6 +474,7 @@ model Clients {
 
   @@index([countryId], map: "Clients_countryId_fkey")
   @@index([salesRepId], map: "Clients_salesRepId_fkey")
+  JourneyPlan JourneyPlan[]
 }
 
 model Task {
@@ -623,6 +623,10 @@ model JourneyPlan {
   checkoutTime       DateTime?
   showUpdateLocation Boolean   @default(true)
   routeId            Int?
+  client             Clients   @relation(fields: [clientId], references: [id])
+  route              routes?   @relation(fields: [routeId], references: [id])
+  user               SalesRep? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reports            Report[]
 
   @@index([clientId])
   @@index([userId])
@@ -646,7 +650,7 @@ model Report {
   userId         Int
   journeyPlanId  Int?
   type           ReportType
-  SalesRep       SalesRep[]
+  salesRep       SalesRep         @relation(fields: [userId], references: [id])
   ProductReturn  ProductReturn[]
   ProductsSample ProductsSample[]
 
@@ -654,6 +658,7 @@ model Report {
   @@index([orderId])
   @@index([clientId])
   @@index([journeyPlanId])
+  JourneyPlan JourneyPlan[]
 }
 
 model FeedbackReport {
@@ -693,7 +698,7 @@ model VisibilityReport {
   clientId  Int
   id        Int        @id @default(autoincrement())
   userId    Int
-  SalesRep  SalesRep[]
+  salesRep  SalesRep   @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([clientId])
@@ -710,6 +715,8 @@ model routes {
   leader_id    Int
   leader_name  String @db.VarChar(100)
   status       Int
+
+  JourneyPlan JourneyPlan[]
 }
 
 model tasks {

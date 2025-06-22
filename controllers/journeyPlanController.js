@@ -161,11 +161,7 @@ const getJourneyPlans = async (req, res) => {
           gte: today,
           lt: tomorrow,
         },
-        client: {
-          id: {
-            gt: 0,
-          },
-        },
+        clientId: { gt: 0 },
       },
       include: {
         client: true,
