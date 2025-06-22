@@ -58,6 +58,21 @@ exports.createUpliftSale = async (req, res) => {
       let totalAmount = 0;
       const saleItems = await Promise.all(items.map(async (item) => {
         console.log('[UpliftSale] Processing item:', item);
+        
+        // Find the client's stock for the product
+        const clientStock = await tx.clientStock.findUnique({
+          where: {
+            clientId_productId: {
+              clientId: clientId,
+              productId: item.productId,
+            },
+          },
+        });
+
+        if (!clientStock || clientStock.quantity < item.quantity) {
+          throw new Error(`Not enough stock for product ID ${item.productId}. Available: ${clientStock?.quantity || 0}, Requested: ${item.quantity}`);
+        }
+
         const product = await tx.product.findUnique({
           where: { id: item.productId }
         });
@@ -69,6 +84,21 @@ exports.createUpliftSale = async (req, res) => {
         const itemTotal = item.unitPrice * item.quantity;
         totalAmount += itemTotal;
 
+        // Deduct stock from ClientStock
+        await tx.clientStock.update({
+          where: {
+            clientId_productId: {
+              clientId: clientId,
+              productId: item.productId,
+            },
+          },
+          data: {
+            quantity: {
+              decrement: item.quantity,
+            },
+          },
+        });
+
         const saleItem = await tx.upliftSaleItem.create({
           data: {
             upliftSaleId: sale.id,
@@ -79,6 +109,7 @@ exports.createUpliftSale = async (req, res) => {
           }
         });
         console.log('[UpliftSale] Created sale item:', saleItem);
+
         return saleItem;
       }));
 
@@ -220,39 +251,76 @@ exports.updateUpliftSaleStatus = async (req, res) => {
     const { status } = req.body;
 
     if (!status) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: 'Status is required' 
+        message: 'Status is required'
       });
     }
 
     const upliftSale = await prisma.upliftSale.findUnique({
-      where: { id: parseInt(id) }
+      where: { id: parseInt(id) },
+      include: {
+        items: true // Include items to revert stock if voided
+      }
     });
 
     if (!upliftSale) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: 'Uplift sale not found' 
+        message: 'Uplift sale not found'
       });
     }
 
-    const updatedSale = await prisma.upliftSale.update({
-      where: { id: parseInt(id) },
-      data: { status }
-    });
+    // If the sale is being voided, revert the stock
+    if (status === 'voided' && upliftSale.status !== 'voided') {
+      const updatedSale = await prisma.$transaction(async (tx) => {
+        // Restore stock for each item
+        for (const item of upliftSale.items) {
+          await tx.clientStock.update({
+            where: {
+              clientId_productId: {
+                clientId: upliftSale.clientId,
+                productId: item.productId,
+              },
+            },
+            data: {
+              quantity: {
+                increment: item.quantity,
+              },
+            },
+          });
+        }
 
-    res.json({ 
-      success: true,
-      message: 'Status updated successfully',
-      data: updatedSale 
-    });
+        // Update the sale status to 'voided'
+        return tx.upliftSale.update({
+          where: { id: parseInt(id) },
+          data: { status: 'voided' }
+        });
+      });
+
+      return res.json({
+        success: true,
+        message: 'Status updated to voided and stock reverted',
+        data: updatedSale
+      });
+    } else {
+      const updatedSale = await prisma.upliftSale.update({
+        where: { id: parseInt(id) },
+        data: { status }
+      });
+
+      res.json({
+        success: true,
+        message: 'Status updated successfully',
+        data: updatedSale
+      });
+    }
   } catch (error) {
     console.error('Error updating uplift sale status:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: 'Error updating uplift sale status',
-      error: error.message 
+      error: error.message
     });
   }
 };

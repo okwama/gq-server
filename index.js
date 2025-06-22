@@ -5,6 +5,8 @@ const morgan = require('morgan');
 const path = require('path');
 const prisma = require('./lib/prisma');
 const cron = require('node-cron');
+const cleanupTokens = require('./scripts/cleanup-tokens');
+const { handleTokenRefresh } = require('./middleware/authMiddleware');
 
 // Debug cron package
 console.log('📦 Cron package loaded:', cron ? 'Yes' : 'No');
@@ -36,9 +38,10 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 app.use(morgan('dev'));
-// Auto-logout Cron Job at 5:54 PM Africa/Nairobi time
+
+// Auto-logout Cron Job at midnight Africa/Nairobi time
 console.log('🔄 Setting up auto-logout cron job...');
-const job = cron.schedule('0 0 * * *', async () => {
+const logoutJob = cron.schedule('0 0 * * *', async () => {
   const now = new Date();
   console.log(`⏰ Running auto-logout job at ${now.toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}`);
 
@@ -95,9 +98,26 @@ const job = cron.schedule('0 0 * * *', async () => {
   timezone: 'Africa/Nairobi'
 });
 
+// Token Cleanup Cron Job at 2 AM Africa/Nairobi time
+console.log('🧹 Setting up token cleanup cron job...');
+const cleanupJob = cron.schedule('0 2 * * *', async () => {
+  const now = new Date();
+  console.log(`🧹 Running token cleanup job at ${now.toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}`);
+  
+  try {
+    await cleanupTokens();
+  } catch (err) {
+    console.error('❌ Error during token cleanup:', err);
+  }
+}, {
+  timezone: 'Africa/Nairobi'
+});
+
 // Debug job status
 console.log('✅ Auto-logout cron job has been set up');
-console.log('📋 Job is running:', job.running);
+console.log('✅ Token cleanup cron job has been set up');
+console.log('📋 Logout job is running:', logoutJob.running);
+console.log('📋 Cleanup job is running:', cleanupJob.running);
 
 // Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -107,6 +127,8 @@ console.log('Static file path configured:', path.join(__dirname, '../uploads'));
 // Default Route
 app.get('/', (req, res) => res.json({ message: 'Welcome to the API' }));
 
+// Apply token refresh middleware to all API routes (before route definitions)
+app.use('/api', handleTokenRefresh);
 
 // Route Prefixing
 app.use('/api/auth', authRoutes);
