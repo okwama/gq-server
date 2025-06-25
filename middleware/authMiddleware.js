@@ -46,7 +46,249 @@ const generateNewTokens = async (userId, role) => {
   }
 };
 
-// Main authentication middleware
+// Enhanced authentication middleware with automatic retry
+const authenticateTokenWithRetry = async (req, res, next) => {
+  const maxRetries = 1; // Only retry once to avoid infinite loops
+  let retryCount = 0;
+
+  const attemptAuthentication = async () => {
+    try {
+      const authHeader = req.headers['authorization'];
+      const token = authHeader && authHeader.split(' ')[1];
+
+      if (!token) {
+        return res.status(401).json({ error: 'Access token required' });
+      }
+
+      // Verify the token first
+      let decoded;
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // Check if it's an access token
+        if (decoded.type !== 'access') {
+          return res.status(401).json({ 
+            error: 'Invalid token type. Access token required.',
+            code: 'INVALID_TOKEN_TYPE'
+          });
+        }
+      } catch (jwtError) {
+        if (jwtError.name === 'TokenExpiredError') {
+          console.log(`🕐 Token expired for user, attempting automatic refresh (attempt ${retryCount + 1})...`);
+          
+          // Try to extract user ID from expired token (without verification)
+          let expiredUserId;
+          try {
+            const decodedWithoutVerification = jwt.decode(token);
+            expiredUserId = decodedWithoutVerification?.userId;
+          } catch (decodeError) {
+            console.error('Could not decode expired token:', decodeError.message);
+          }
+          
+          if (expiredUserId && retryCount < maxRetries) {
+            // Try to refresh tokens automatically
+            try {
+              const user = await prisma.salesRep.findUnique({
+                where: { id: expiredUserId },
+                include: {
+                  Manager: true,
+                  countryRelation: true
+                }
+              });
+
+              if (user) {
+                // Blacklist the old token first
+                await prisma.token.updateMany({
+                  where: {
+                    token: token,
+                    salesRepId: expiredUserId,
+                    tokenType: 'access'
+                  },
+                  data: { blacklisted: true }
+                });
+
+                // Generate new tokens
+                const { newAccessToken, newRefreshToken } = await generateNewTokens(expiredUserId, user.role);
+
+                // Update the request with new token
+                req.headers['authorization'] = `Bearer ${newAccessToken}`;
+                
+                // Set the new access token in the request for this call
+                req.user = user;
+                req.token = newAccessToken;
+                req.tokensRefreshed = true;
+                req.newTokens = { accessToken: newAccessToken, refreshToken: newRefreshToken };
+
+                console.log('✅ Tokens automatically refreshed for expired token, user:', expiredUserId);
+                
+                // If this was a retry, proceed with the request
+                if (retryCount > 0) {
+                  next();
+                  return;
+                }
+                
+                // If this was the first attempt, retry the authentication
+                retryCount++;
+                return await attemptAuthentication();
+              }
+            } catch (refreshError) {
+              console.error('❌ Failed to refresh expired token:', refreshError.message);
+            }
+          }
+          
+          return res.status(401).json({ 
+            error: 'Access token expired. Please login again.',
+            code: 'TOKEN_EXPIRED',
+            autoRefreshFailed: true
+          });
+        }
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      // Try to check token in database
+      let tokenRecord = null;
+      let dbAvailable = true;
+      
+      try {
+        // Check if access token exists in database and is not expired/blacklisted
+        tokenRecord = await prisma.token.findFirst({
+          where: {
+            token: token,
+            salesRepId: decoded.userId,
+            tokenType: 'access',
+            blacklisted: false,
+            expiresAt: {
+              gt: new Date()
+            }
+          }
+        });
+      } catch (dbError) {
+        console.warn('Database connection issue during token validation:', dbError.message);
+        dbAvailable = false;
+      }
+
+      // If database is available but token not found, try to refresh tokens
+      if (dbAvailable && !tokenRecord) {
+        console.log('Token not found in database but JWT is valid, attempting token refresh for user:', decoded.userId);
+        
+        try {
+          // Get user details first
+          const user = await prisma.salesRep.findUnique({
+            where: { id: decoded.userId },
+            include: {
+              Manager: true,
+              countryRelation: true
+            }
+          });
+
+          if (!user) {
+            return res.status(401).json({ error: 'User not found' });
+          }
+
+          // Blacklist the old token
+          await prisma.token.updateMany({
+            where: {
+              token: token,
+              salesRepId: decoded.userId,
+              tokenType: 'access'
+            },
+            data: { blacklisted: true }
+          });
+
+          // Generate new tokens
+          const { newAccessToken, newRefreshToken } = await generateNewTokens(decoded.userId, user.role);
+
+          // Update the request with new token
+          req.headers['authorization'] = `Bearer ${newAccessToken}`;
+          
+          // Set the new access token in the request for this call
+          req.user = user;
+          req.token = newAccessToken;
+          req.tokensRefreshed = true;
+          req.newTokens = { accessToken: newAccessToken, refreshToken: newRefreshToken };
+
+          console.log('Tokens automatically refreshed for user:', decoded.userId);
+          
+          // If this was a retry, proceed with the request
+          if (retryCount > 0) {
+            next();
+            return;
+          }
+          
+          // If this was the first attempt, retry the authentication
+          retryCount++;
+          return await attemptAuthentication();
+        } catch (refreshError) {
+          console.error('Failed to refresh tokens:', refreshError);
+          return res.status(401).json({ 
+            error: 'Token validation failed. Please login again.',
+            code: 'TOKEN_REFRESH_FAILED'
+          });
+        }
+      }
+
+      // If database is not available, continue with JWT-only validation
+      if (!dbAvailable) {
+        console.warn('Database unavailable, using JWT-only validation for user:', decoded.userId);
+      }
+
+      // Get user details
+      let user;
+      try {
+        user = await prisma.salesRep.findUnique({
+          where: { id: decoded.userId },
+          include: {
+            Manager: true,
+            countryRelation: true
+          }
+        });
+      } catch (userError) {
+        console.warn('Failed to fetch user details:', userError.message);
+        // If we can't fetch user details, still allow the request
+        // but set minimal user info from JWT
+        user = {
+          id: decoded.userId,
+          role: decoded.role
+        };
+      }
+
+      if (!user) {
+        return res.status(401).json({ error: 'User not found' });
+      }
+
+      // Update last used timestamp if we have a token record and database is available
+      if (tokenRecord && dbAvailable) {
+        try {
+          await prisma.token.update({
+            where: { id: tokenRecord.id },
+            data: { lastUsedAt: new Date() }
+          });
+        } catch (updateError) {
+          console.warn('Failed to update token last used:', updateError.message);
+        }
+      }
+
+      // Set security headers
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('X-XSS-Protection', '1; mode=block');
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+
+      req.user = user;
+      req.token = token;
+      req.tokensRefreshed = false;
+      next();
+    } catch (error) {
+      console.error('Authentication error:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  };
+
+  // Start the authentication attempt
+  await attemptAuthentication();
+};
+
+// Main authentication middleware (original version for backward compatibility)
 const authenticateToken = async (req, res, next) => {
   try {
     const authHeader = req.headers['authorization'];
@@ -381,6 +623,7 @@ const handleTokenRefresh = (req, res, next) => {
 // Export all functions
 module.exports = {
   authenticateToken,
+  authenticateTokenWithRetry, // New enhanced version with retry
   auth: authenticateToken, // Alias for backward compatibility
   protect: authenticateToken, // Add protect middleware
   handleTokenRefresh, // Add the new middleware

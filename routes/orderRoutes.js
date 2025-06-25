@@ -1,10 +1,10 @@
 const express = require('express');
-const { authenticateToken } = require('../middleware/authMiddleware');
+const { authenticateTokenWithRetry } = require('../middleware/authMiddleware');
 const {  createOrder, getOrders, updateOrder, getUserSalesSummary, requestOrderVoid, checkVoidStatus } = require('../controllers/orderController');
 
 const router = express.Router();
 
-router.use(authenticateToken);
+router.use(authenticateTokenWithRetry);
 
 router.post('/', createOrder);
 router.get('/', getOrders);

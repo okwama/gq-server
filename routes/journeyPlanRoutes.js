@@ -1,11 +1,11 @@
 const express = require('express');
-const { authenticateToken } = require('../middleware/authMiddleware');
+const { authenticateTokenWithRetry } = require('../middleware/authMiddleware');
 const { createJourneyPlan, updateJourneyPlan, getJourneyPlans, deleteJourneyPlan } = require('../controllers/journeyPlanController');
 
 const router = express.Router();
 
 // Protect all routes with authentication middleware
-router.use(authenticateToken);
+router.use(authenticateTokenWithRetry);
 
 // Create a journey plan
 router.post('/', createJourneyPlan);

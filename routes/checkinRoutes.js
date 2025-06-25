@@ -1,18 +1,18 @@
 const express = require('express');
+const { authenticateTokenWithRetry } = require('../middleware/authMiddleware');
 const { checkIn, checkOut, getClientLocation, getHistory, getTotalWorkingHours } = require('../controllers/CheckinController');
-const { authenticateToken } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
 // Check-in route
-router.post('/', authenticateToken, checkIn);
+router.post('/', authenticateTokenWithRetry, checkIn);
 // Check-out route
-router.post('/checkout', authenticateToken, checkOut);
+router.post('/checkout', authenticateTokenWithRetry, checkOut);
 // Get client location
-router.get('/clients/:clientId/location', authenticateToken, getClientLocation);
+router.get('/clients/:clientId/location', authenticateTokenWithRetry, getClientLocation);
 // Get check-in history
-router.get('/history', authenticateToken, getHistory);
+router.get('/history', authenticateTokenWithRetry, getHistory);
 // Get working hours
-router.get('/working-hours', authenticateToken, getTotalWorkingHours);
+router.get('/working-hours', authenticateTokenWithRetry, getTotalWorkingHours);
 
 module.exports = router;

@@ -1,10 +1,11 @@
 const express = require('express');
-const { getOffice, createOffice, updateOffice } = require('../controllers/officeController');
-const { authenticateToken } = require('../middleware/authMiddleware');
+const { getOffice, createOffice, updateOffice, deleteOffice } = require('../controllers/officeController');
+const { authenticateTokenWithRetry } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-router.use(authenticateToken); // Add authentication middleware to all outlet routes
+// Add enhanced authentication middleware to all office routes
+router.use(authenticateTokenWithRetry);
 
 // ✅ Fix: Remove the extra "/outlets"
 router
@@ -14,7 +15,7 @@ router
 
 router
   .route('/:id')
-  .put(updateOffice); // PUT /api/offices/:id
-
+  .put(updateOffice) // PUT /api/offices/:id
+  .delete(deleteOffice); // DELETE /api/offices/:id
 
 module.exports = router;

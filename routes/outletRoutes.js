@@ -1,10 +1,11 @@
 const express = require('express');
 const { getOutlets, createOutlet, updateOutlet, getOutletProducts, getOutletLocation, addClientPayment, getClientPayments, updateOutletLocation, updateClientDiscount, getClientDiscount } = require('../controllers/outletController');
-const { authenticateToken } = require('../middleware/authMiddleware');
+const { authenticateTokenWithRetry } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-router.use(authenticateToken); // Add authentication middleware to all outlet routes
+// Add enhanced authentication middleware to all outlet routes
+router.use(authenticateTokenWithRetry);
 
 // ✅ Fix: Remove the extra "/outlets"
 router

@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const taskController = require('../controllers/taskController');
-const { authenticateToken } = require('../middleware/authMiddleware');
+const { authenticateTokenWithRetry } = require('../middleware/authMiddleware');
 
 // Apply authentication middleware to all routes
-router.use(authenticateToken);
+router.use(authenticateTokenWithRetry);
 
 // Get all tasks for a sales rep
 router.get('/salesrep/:salesRepId', taskController.getTasks);

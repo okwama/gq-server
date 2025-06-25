@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const clientStockController = require('../controllers/clientStockController');
-const { authenticateToken } = require('../middleware/authMiddleware');
+const { authenticateTokenWithRetry } = require('../middleware/authMiddleware');
 
 // Apply authentication middleware to all routes
-router.use(authenticateToken);
+router.use(authenticateTokenWithRetry);
 
 // POST /api/client-stock - Update client stock (create or update)
 router.post('/', clientStockController.updateClientStock);

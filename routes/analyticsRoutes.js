@@ -1,11 +1,11 @@
 const express = require('express');
-const { authenticateToken } = require('../middleware/authMiddleware');
+const { authenticateTokenWithRetry } = require('../middleware/authMiddleware');
 const { calculateLoginHours, calculateJourneyPlanVisits } = require('../controllers/analyticsController');
 
 const router = express.Router();
 
 // Protect all routes with authentication middleware
-router.use(authenticateToken);
+router.use(authenticateTokenWithRetry);
 
 // Base analytics endpoint
 router.get('/', (req, res) => {

@@ -1,5 +1,5 @@
 const express = require('express');
-const { authenticateToken } = require('../middleware/authMiddleware');
+const { authenticateTokenWithRetry } = require('../middleware/authMiddleware');
 const {
   getProducts,
   getProductsForClient,
@@ -11,7 +11,7 @@ const {
 const router = express.Router();
 
 // Protect all routes with authentication middleware
-router.use(authenticateToken);
+router.use(authenticateTokenWithRetry);
 
 // Get all products
 router.get('/', getProducts);
