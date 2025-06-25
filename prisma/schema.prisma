@@ -121,10 +121,13 @@ model SalesRep {
   Task                 Task[]
   ProductReturn        ProductReturn[]
   JourneyPlan          JourneyPlan[]
+  MyOrder              MyOrder[]
 
   @@index([countryId], map: "SalesRep_countryId_fkey")
   @@index([managerId])
   LoginHistory LoginHistory[]
+  ProductReport ProductReport[]
+  FeedbackReport FeedbackReport[]
 }
 
 model Target {
@@ -246,6 +249,7 @@ model PriceOption {
   category   Category @relation(fields: [categoryId], references: [id])
 
   @@index([categoryId], map: "PriceOption_categoryId_fkey")
+  OrderItem OrderItem[]
 }
 
 model StoreQuantity {
@@ -491,6 +495,11 @@ model Clients {
   JourneyPlan        JourneyPlan[]
   Product            Product[]
   ClientStock        ClientStock[]
+  MyOrder            MyOrder[]
+  Report             Report[]
+  FeedbackReport     FeedbackReport[]
+  ProductReport      ProductReport[]
+  VisibilityReport   VisibilityReport[]
 
   @@index([countryId], map: "Clients_countryId_fkey")
   @@index([salesRepId], map: "Clients_salesRepId_fkey")
@@ -572,12 +581,14 @@ model ManagerCheckin {
 }
 
 model OrderItem {
-  id            Int       @id @default(autoincrement())
+  id            Int          @id @default(autoincrement())
   orderId       Int
   productId     Int
   quantity      Int
   priceOptionId Int?
-  Product       Product[]
+  order         MyOrder      @relation(fields: [orderId], references: [id])
+  priceOption   PriceOption? @relation(fields: [priceOptionId], references: [id])
+  product       Product      @relation(fields: [productId], references: [id])
 
   @@unique([orderId, productId, priceOptionId])
   @@index([orderId])
@@ -585,19 +596,21 @@ model OrderItem {
   @@index([productId], map: "OrderItem_productId_fkey")
 }
 
+
 model MyOrder {
-  id                   Int      @id @default(autoincrement())
+  id                   Int         @id @default(autoincrement())
   totalAmount          Float
-  amountPaid           Decimal  @db.Decimal(11, 2)
-  balance              Decimal  @db.Decimal(11, 2)
+  totalCost            Decimal     @db.Decimal(11, 2)
+  amountPaid           Decimal     @db.Decimal(11, 2)
+  balance              Decimal     @db.Decimal(11, 2)
   comment              String
   customerType         String
   customerId           String
   customerName         String
-  orderDate            DateTime @default(now())
+  orderDate            DateTime    @default(now())
   riderId              Int?
   riderName            String?
-  status               Int      @default(0)
+  status               Int         @default(0)
   approvedTime         String?
   dispatchTime         String?
   deliveryLocation     String?
@@ -612,15 +625,19 @@ model MyOrder {
   clientId             Int
   countryId            Int
   regionId             Int
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  approved_by          String   @db.VarChar(200)
-  approved_by_name     String   @db.VarChar(200)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  approved_by          String      @db.VarChar(200)
+  approved_by_name     String      @db.VarChar(200)
   storeId              Int?
   retail_manager       Int
   key_channel_manager  Int
   distribution_manager Int
   imageUrl             String?
+  client               Clients     @relation(fields: [clientId], references: [id])
+  user                 SalesRep    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems           OrderItem[]
+  reports              Report[]    @relation("MyOrderToReport")
 
   @@index([userId])
   @@index([clientId])
@@ -662,18 +679,24 @@ model NoticeBoard {
   countryId Int?
 }
 
+
 model Report {
-  id             Int              @id @default(autoincrement())
-  orderId        Int?
-  clientId       Int
-  createdAt      DateTime         @default(now())
-  userId         Int
-  journeyPlanId  Int?
-  type           ReportType
-  salesRep       SalesRep         @relation(fields: [userId], references: [id])
-  ProductReturn  ProductReturn[]
-  ProductsSample ProductsSample[]
-  JourneyPlan    JourneyPlan[]
+  id               Int               @id @default(autoincrement())
+  orderId          Int?
+  clientId         Int
+  createdAt        DateTime          @default(now())
+  userId           Int
+  journeyPlanId    Int?
+  type             ReportType
+  FeedbackReport   FeedbackReport?
+  ProductReport    ProductReport[]
+  productReturns   ProductReturn?
+  productsSample   ProductsSample?
+  client           Clients           @relation(fields: [clientId], references: [id])
+  journeyPlan      JourneyPlan?      @relation(fields: [journeyPlanId], references: [id])
+  user             SalesRep          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  VisibilityReport VisibilityReport?
+  MyOrder          MyOrder[]         @relation("MyOrderToReport")
 
   @@index([userId])
   @@index([orderId])
@@ -688,6 +711,9 @@ model FeedbackReport {
   clientId  Int
   id        Int      @id @default(autoincrement())
   userId    Int
+  client    Clients  @relation(fields: [clientId], references: [id])
+  Report    Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  user      SalesRep @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([clientId])
@@ -704,6 +730,9 @@ model ProductReport {
   id          Int      @id @default(autoincrement())
   userId      Int
   productId   Int?
+  client      Clients  @relation(fields: [clientId], references: [id])
+  Report      Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  user        SalesRep @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([clientId])
@@ -718,12 +747,15 @@ model VisibilityReport {
   clientId  Int
   id        Int      @id @default(autoincrement())
   userId    Int
-  salesRep  SalesRep @relation(fields: [userId], references: [id])
+  client    Clients  @relation(fields: [clientId], references: [id])
+  Report    Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  user      SalesRep @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([clientId])
   @@index([reportId])
 }
+
 
 model routes {
   id           Int           @id @default(autoincrement())

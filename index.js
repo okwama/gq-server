@@ -6,7 +6,6 @@ const path = require('path');
 const prisma = require('./lib/prisma');
 const cron = require('node-cron');
 const cleanupTokens = require('./scripts/cleanup-tokens');
-const { handleTokenRefresh } = require('./middleware/authMiddleware');
 
 // Debug cron package
 console.log('📦 Cron package loaded:', cron ? 'Yes' : 'No');
@@ -17,7 +16,6 @@ const authRoutes = require('./routes/authRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const journeyPlanRoutes = require('./routes/journeyPlanRoutes');
 const checkinRoutes = require('./routes/checkinRoutes');
-const officeRoutes = require('./routes/officeRoutes');
 const outletRoutes = require('./routes/outletRoutes');
 const noticeBoardRoutes = require('./routes/noticeBoardRoutes');
 const productRoutes = require('./routes/productRoutes');
@@ -127,9 +125,6 @@ console.log('Static file path configured:', path.join(__dirname, '../uploads'));
 
 // Default Route
 app.get('/', (req, res) => res.json({ message: 'Welcome to the API' }));
-
-// Apply token refresh middleware to all API routes (before route definitions)
-app.use('/api', handleTokenRefresh);
 
 // Route Prefixing
 app.use('/api/auth', authRoutes);
