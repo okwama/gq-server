@@ -1,2 +1,6 @@
 node_modules/
 /.env
+/~$user_list.xlsx
+/logs.json
+/SalesRep.sql
+/user_list.xlsx
