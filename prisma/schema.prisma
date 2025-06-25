@@ -120,41 +120,23 @@ model SalesRep {
   Manager              Manager?             @relation(fields: [managerId], references: [id])
   Task                 Task[]
   ProductReturn        ProductReturn[]
+  JourneyPlan          JourneyPlan[]
 
   @@index([countryId], map: "SalesRep_countryId_fkey")
-  JourneyPlan JourneyPlan[]
-}
-
-model LoginHistory {
-  id           Int       @id @default(autoincrement())
-  userId       Int
-  loginAt      DateTime  @default(now())
-  logoutAt     DateTime?
-  isLate       Boolean?  @default(false)
-  isEarly      Boolean?  @default(false)
-  timezone     String?   @default("UTC")
-  shiftStart   DateTime?
-  shiftEnd     DateTime?
-  duration     Int?
-  status       String?   @default("ACTIVE")
-  sessionEnd   String?
-  sessionStart String?
-
-  @@index([userId])
-  @@index([loginAt])
-  @@index([logoutAt])
+  @@index([managerId])
+  LoginHistory LoginHistory[]
 }
 
 model Target {
-  id            Int        @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   salesRepId    Int
-  isCurrent     Boolean    @default(false)
+  isCurrent     Boolean  @default(false)
   targetValue   Int
-  achievedValue Int        @default(0)
-  achieved      Boolean    @default(false)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  salesRep      SalesRep   @relation(fields: [salesRepId], references: [id])
+  achievedValue Int      @default(0)
+  achieved      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  salesRep      SalesRep @relation(fields: [salesRepId], references: [id])
 
   @@index([salesRepId], map: "Target_salesRepId_fkey")
 }
@@ -217,15 +199,15 @@ model UpliftSaleItem {
 }
 
 model Token {
-  id          Int        @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   token       String
   salesRepId  Int
-  createdAt   DateTime   @default(now())
+  createdAt   DateTime  @default(now())
   expiresAt   DateTime
-  blacklisted Boolean    @default(false)
+  blacklisted Boolean   @default(false)
   lastUsedAt  DateTime?
-  tokenType   String     @default("access")
-  salesRep    SalesRep   @relation(fields: [salesRepId], references: [id])
+  tokenType   String    @default("access")
+  salesRep    SalesRep  @relation(fields: [salesRepId], references: [id])
 
   @@index([salesRepId])
   @@index([blacklisted])
@@ -244,9 +226,9 @@ model Regions {
 }
 
 model Country {
-  id       Int       @id @default(autoincrement())
+  id       Int        @id @default(autoincrement())
   name     String
-  status   Int?      @default(0)
+  status   Int?       @default(0)
   salesRep SalesRep[]
 }
 
@@ -267,28 +249,28 @@ model PriceOption {
 }
 
 model StoreQuantity {
-  id        Int @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   quantity  Int
   storeId   Int
   productId Int
-  store     Stores   @relation(fields: [storeId], references: [id])
+  store     Stores    @relation(fields: [storeId], references: [id])
+  Product   Product[]
 
   @@index([productId], map: "StoreQuantity_productId_fkey")
   @@index([storeId], map: "StoreQuantity_storeId_fkey")
-  Product Product[]
 }
 
 model Stores {
-  id          Int    @id @default(autoincrement())
-  name        String
-  regionId    Int?
-  client_type Int?
-  countryId   Int
-  region_id   Int?
-  status      Int    @default(0)
+  id            Int             @id @default(autoincrement())
+  name          String
+  regionId      Int?
+  client_type   Int?
+  countryId     Int
+  region_id     Int?
+  status        Int             @default(0)
+  StoreQuantity StoreQuantity[]
 
   @@index([regionId], map: "Stores_regionId_fkey")
-  StoreQuantity StoreQuantity[]
 }
 
 model Product {
@@ -312,10 +294,11 @@ model Product {
   TransferHistory      TransferHistory[]
   UpliftSaleItem       UpliftSaleItem[]
   product_transactions product_transactions[]
+  ClientStock          ClientStock[]
 
   @@index([clientId], map: "Product_clientId_fkey")
-  ClientStock ClientStock[]
 }
+
 model product_transactions {
   id               Int      @id @default(autoincrement())
   product_id       Int
@@ -330,37 +313,38 @@ model product_transactions {
 
   @@index([product_id], map: "product_id")
 }
+
 model TransferHistory {
-  id            Int      @id @default(autoincrement())
+  id            Int       @id @default(autoincrement())
   productId     Int
   fromStoreId   Int
   toStoreId     Int
   quantity      Int
-  transferredAt DateTime @default(now())
+  transferredAt DateTime  @default(now())
   updatedAt     DateTime
+  Product       Product[]
 
   @@index([fromStoreId], map: "TransferHistory_fromStoreId_fkey")
   @@index([productId], map: "TransferHistory_productId_fkey")
   @@index([toStoreId], map: "TransferHistory_toStoreId_fkey")
-  Product Product[]
 }
 
 model ProductDetails {
-  id          Int    @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   productId   Int
-  date        String @default("current_timestamp(3)") @db.VarChar(100)
+  date        String    @default("current_timestamp(3)") @db.VarChar(100)
   reference   String
   quantityIn  Int
   quantityOut Int
   newBalance  Int
   storeId     Int
   staff       Int
-  staff_name  String @db.VarChar(100)
-  update_date String @db.VarChar(50)
+  staff_name  String    @db.VarChar(100)
+  update_date String    @db.VarChar(50)
+  Product     Product[]
 
   @@index([productId], map: "ProductDetails_productId_fkey")
   @@index([storeId], map: "ProductDetails_storeId_fkey")
-  Product Product[]
 }
 
 model ProductReturn {
@@ -449,29 +433,29 @@ model Purchase {
 }
 
 model PurchaseItem {
-  id         Int   @id @default(autoincrement())
+  id         Int       @id @default(autoincrement())
   purchaseId Int
   productId  Int
   quantity   Int
   price      Float
+  Product    Product[]
 
   @@index([productId], map: "PurchaseItem_productId_fkey")
   @@index([purchaseId], map: "PurchaseItem_purchaseId_fkey")
-  Product Product[]
 }
 
 model PurchaseHistory {
-  id               Int      @id @default(autoincrement())
+  id               Int       @id @default(autoincrement())
   storeId          Int
   productId        Int
   previousQuantity Int
   purchaseQuantity Int
   newBalance       Int
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
+  Product          Product[]
 
   @@index([productId], map: "PurchaseHistory_productId_fkey")
   @@index([storeId], map: "PurchaseHistory_storeId_fkey")
-  Product Product[]
 }
 
 model Clients {
@@ -485,6 +469,7 @@ model Clients {
   email              String?
   region_id          Int
   region             String
+  outlet_account     Int
   route_id           Int?
   route_name         String?
   route_id_update    Int?
@@ -503,12 +488,12 @@ model Clients {
   ProductsSample     ProductsSample[]
   ProductReturnItem  ProductReturnItem[]
   ProductsSampleItem ProductsSampleItem[]
+  JourneyPlan        JourneyPlan[]
+  Product            Product[]
+  ClientStock        ClientStock[]
 
   @@index([countryId], map: "Clients_countryId_fkey")
   @@index([salesRepId], map: "Clients_salesRepId_fkey")
-  JourneyPlan JourneyPlan[]
-  Product Product[]
-  ClientStock ClientStock[]
 }
 
 model Task {
@@ -587,17 +572,17 @@ model ManagerCheckin {
 }
 
 model OrderItem {
-  id            Int  @id @default(autoincrement())
+  id            Int       @id @default(autoincrement())
   orderId       Int
   productId     Int
   quantity      Int
   priceOptionId Int?
+  Product       Product[]
 
   @@unique([orderId, productId, priceOptionId])
   @@index([orderId])
   @@index([priceOptionId])
   @@index([productId], map: "OrderItem_productId_fkey")
-  Product Product[]
 }
 
 model MyOrder {
@@ -688,12 +673,12 @@ model Report {
   salesRep       SalesRep         @relation(fields: [userId], references: [id])
   ProductReturn  ProductReturn[]
   ProductsSample ProductsSample[]
+  JourneyPlan    JourneyPlan[]
 
   @@index([userId])
   @@index([orderId])
   @@index([clientId])
   @@index([journeyPlanId])
-  JourneyPlan JourneyPlan[]
 }
 
 model FeedbackReport {
@@ -726,14 +711,14 @@ model ProductReport {
 }
 
 model VisibilityReport {
-  reportId  Int        @unique
+  reportId  Int      @unique
   comment   String?
   imageUrl  String?
-  createdAt DateTime   @default(now())
+  createdAt DateTime @default(now())
   clientId  Int
-  id        Int        @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   userId    Int
-  salesRep  SalesRep   @relation(fields: [userId], references: [id])
+  salesRep  SalesRep @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([clientId])
@@ -741,17 +726,16 @@ model VisibilityReport {
 }
 
 model routes {
-  id           Int    @id @default(autoincrement())
-  name         String @db.VarChar(100)
+  id           Int           @id @default(autoincrement())
+  name         String        @db.VarChar(100)
   region       Int
-  region_name  String @db.VarChar(100)
+  region_name  String        @db.VarChar(100)
   country_id   Int
-  country_name String @db.VarChar(100)
+  country_name String        @db.VarChar(100)
   leader_id    Int
-  leader_name  String @db.VarChar(100)
+  leader_name  String        @db.VarChar(100)
   status       Int
-
-  JourneyPlan JourneyPlan[]
+  JourneyPlan  JourneyPlan[]
 }
 
 model tasks {
@@ -770,21 +754,121 @@ model tasks {
   @@index([salesRepId], map: "tasks_salesRepId_fkey")
 }
 
+model ClientStock {
+  id        Int     @id @default(autoincrement())
+  quantity  Int
+  clientId  Int
+  productId Int
+  Clients   Clients @relation(fields: [clientId], references: [id])
+  Product   Product @relation(fields: [productId], references: [id])
+
+  @@unique([clientId, productId])
+  @@index([productId], map: "ClientStock_productId_fkey")
+}
+
+model LoginHistory {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  loginAt      DateTime  @default(now())
+  logoutAt     DateTime?
+  isLate       Boolean?  @default(false)
+  isEarly      Boolean?  @default(false)
+  timezone     String?   @default("UTC")
+  shiftStart   DateTime?
+  shiftEnd     DateTime?
+  duration     Int?
+  status       String?   @default("ACTIVE")
+  sessionEnd   String?
+  sessionStart String?
+  salesRep     SalesRep @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([loginAt])
+  @@index([logoutAt])
+  @@index([userId])
+}
+
+model departments {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(50)
+}
+
+model outlet_accounts {
+  id     Int    @id @default(autoincrement())
+  name   String @db.VarChar(100)
+  status Int
+}
+
+model outlet_categories {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(100)
+}
+
+model JourneyPlanToReport {
+  A Int
+  B Int
+
+  @@unique([A, B], map: "_JourneyPlanToReport_AB_unique")
+  @@index([B], map: "_JourneyPlanToReport_B_index")
+  @@map("_JourneyPlanToReport")
+}
+
+model OrderItemToProduct {
+  A Int
+  B Int
+
+  @@unique([A, B], map: "_OrderItemToProduct_AB_unique")
+  @@index([B], map: "_OrderItemToProduct_B_index")
+  @@map("_OrderItemToProduct")
+}
+
+model ProductToProductDetails {
+  A Int
+  B Int
+
+  @@unique([A, B], map: "_ProductToProductDetails_AB_unique")
+  @@index([B], map: "_ProductToProductDetails_B_index")
+  @@map("_ProductToProductDetails")
+}
+
+model ProductToPurchaseHistory {
+  A Int
+  B Int
+
+  @@unique([A, B], map: "_ProductToPurchaseHistory_AB_unique")
+  @@index([B], map: "_ProductToPurchaseHistory_B_index")
+  @@map("_ProductToPurchaseHistory")
+}
+
+model ProductToPurchaseItem {
+  A Int
+  B Int
+
+  @@unique([A, B], map: "_ProductToPurchaseItem_AB_unique")
+  @@index([B], map: "_ProductToPurchaseItem_B_index")
+  @@map("_ProductToPurchaseItem")
+}
+
+model ProductToStoreQuantity {
+  A Int
+  B Int
+
+  @@unique([A, B], map: "_ProductToStoreQuantity_AB_unique")
+  @@index([B], map: "_ProductToStoreQuantity_B_index")
+  @@map("_ProductToStoreQuantity")
+}
+
+model ProductToTransferHistory {
+  A Int
+  B Int
+
+  @@unique([A, B], map: "_ProductToTransferHistory_AB_unique")
+  @@index([B], map: "_ProductToTransferHistory_B_index")
+  @@map("_ProductToTransferHistory")
+}
+
 enum ReportType {
   PRODUCT_AVAILABILITY
   VISIBILITY_ACTIVITY
   PRODUCT_SAMPLE
   PRODUCT_RETURN
   FEEDBACK
-}
-
-model ClientStock {
-  id        Int      @id @default(autoincrement())
-  quantity  Int
-  clientId  Int
-  productId Int
-  Clients   Clients  @relation(fields: [clientId], references: [id])
-  Product   Product  @relation(fields: [productId], references: [id])
-
-  @@unique([clientId, productId])
 }
