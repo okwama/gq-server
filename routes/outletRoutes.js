@@ -1,5 +1,5 @@
 const express = require('express');
-const { getOutlets, createOutlet, updateOutlet, getOutletProducts, getOutletLocation, addClientPayment, getClientPayments, updateOutletLocation, updateClientDiscount, getClientDiscount } = require('../controllers/outletController');
+const { getOutlets, createOutlet, updateOutlet, getOutletProducts, getOutletLocation, addClientPayment, getClientPayments, updateOutletLocation, updateClientDiscount, getClientDiscount, assignOutletToSalesRep, removeOutletAssignment, getOutletAssignments, getSalesRepAssignments } = require('../controllers/outletController');
 const { authenticateTokenWithRetry } = require('../middleware/authMiddleware');
 
 const router = express.Router();
@@ -35,5 +35,11 @@ router
   .route('/:id/discount')
   .get(getClientDiscount) // GET /api/outlets/:id/discount
   .put(updateClientDiscount); // PUT /api/outlets/:id/discount
+
+// Assignment routes
+router.post('/assign', assignOutletToSalesRep); // POST /api/outlets/assign
+router.delete('/:outletId/assign/:salesRepId', removeOutletAssignment); // DELETE /api/outlets/:outletId/assign/:salesRepId
+router.get('/:outletId/assignments', getOutletAssignments); // GET /api/outlets/:outletId/assignments
+router.get('/assignments/salesrep/:salesRepId', getSalesRepAssignments); // GET /api/outlets/assignments/salesrep/:salesRepId
 
 module.exports = router;

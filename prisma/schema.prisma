@@ -122,6 +122,7 @@ model SalesRep {
   ProductReturn        ProductReturn[]
   JourneyPlan          JourneyPlan[]
   MyOrder              MyOrder[]
+  ClientAssignment     ClientAssignment[]
 
   @@index([countryId], map: "SalesRep_countryId_fkey")
   @@index([managerId])
@@ -500,9 +501,24 @@ model Clients {
   FeedbackReport     FeedbackReport[]
   ProductReport      ProductReport[]
   VisibilityReport   VisibilityReport[]
+  ClientAssignment   ClientAssignment[]
 
   @@index([countryId], map: "Clients_countryId_fkey")
   @@index([salesRepId], map: "Clients_salesRepId_fkey")
+}
+
+model ClientAssignment {
+  id         Int      @id @default(autoincrement())
+  outletId   Int
+  salesRepId Int
+  assignedAt DateTime @default(now())
+  status     String   @default("active")
+  outlet     Clients  @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  salesRep   SalesRep @relation(fields: [salesRepId], references: [id], onDelete: Cascade)
+
+  @@unique([outletId, salesRepId])
+  @@index([salesRepId])
+  @@index([outletId])
 }
 
 model Task {

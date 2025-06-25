@@ -33,49 +33,130 @@ const getOutlets = async (req, res) => {
     const { route_id, page = 1, limit = 2000, created_after } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Build the where clause
-    const where = {
-      countryId: req.user.countryId,
-      status: 0
-    };
+    // Debug logging
+    console.log(`[DEBUG] getOutlets called by user ID: ${req.user.id}, role: ${req.user.role}, countryId: ${req.user.countryId}`);
 
-    // Updated role check to match schema default
-    if (req.user.role === 'SALES_REP') {  // Changed from !== 'RELIEVER'
-      where.salesRepId = req.user.id;
-    }
-    
-    if (route_id) {
-      where.route_id = parseInt(route_id);
-    }
-    if (created_after) {
-      where.created_at = {
-        gt: new Date(created_after)
+    let outlets;
+    let total;
+
+    // If user is a sales rep, use ClientAssignment table
+    if (req.user.role === 'SALES_REP') {
+      console.log(`[DEBUG] Sales rep ${req.user.id} fetching outlets...`);
+      
+      // Get outlets assigned to this sales rep
+      const assignedOutlets = await prisma.clientAssignment.findMany({
+        where: {
+          salesRepId: req.user.id,
+          status: 'active'
+        },
+        include: {
+          outlet: {
+            select: {
+              id: true,
+              name: true,
+              balance: true,
+              address: true,
+              latitude: true,
+              longitude: true,
+              created_at: true,
+              discountPercentage: true,
+              route_id: true,
+              countryId: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      console.log(`[DEBUG] Found ${assignedOutlets.length} assigned outlets for sales rep ${req.user.id}`);
+
+      // Also get outlets created by this sales rep
+      const createdOutlets = await prisma.clients.findMany({
+        where: {
+          added_by: req.user.id,
+          countryId: req.user.countryId,
+          status: 0
+        },
+        select: {
+          id: true,
+          name: true,
+          balance: true,
+          address: true,
+          latitude: true,
+          longitude: true,
+          created_at: true,
+          discountPercentage: true,
+          route_id: true,
+          countryId: true,
+          status: true
+        }
+      });
+
+      console.log(`[DEBUG] Found ${createdOutlets.length} created outlets for sales rep ${req.user.id}`);
+
+      // Combine and deduplicate outlets
+      const assignedOutletIds = new Set(assignedOutlets.map(a => a.outlet.id));
+      const allOutlets = [
+        ...assignedOutlets.map(a => a.outlet),
+        ...createdOutlets.filter(o => !assignedOutletIds.has(o.id))
+      ];
+
+      console.log(`[DEBUG] Total unique outlets for sales rep ${req.user.id}: ${allOutlets.length}`);
+
+      // Apply additional filters
+      let filteredOutlets = allOutlets.filter(outlet => {
+        if (route_id && outlet.route_id !== parseInt(route_id)) return false;
+        if (created_after && outlet.created_at <= new Date(created_after)) return false;
+        return true;
+      });
+
+      console.log(`[DEBUG] After filtering, sales rep ${req.user.id} gets ${filteredOutlets.length} outlets`);
+
+      total = filteredOutlets.length;
+      outlets = filteredOutlets.slice(skip, skip + parseInt(limit));
+
+    } else {
+      console.log(`[DEBUG] Manager/Admin ${req.user.id} fetching all outlets...`);
+      
+      // For managers/admins, use the old logic
+      const where = {
+        countryId: req.user.countryId,
+        status: 0
       };
+      
+      if (route_id) {
+        where.route_id = parseInt(route_id);
+      }
+      if (created_after) {
+        where.created_at = {
+          gt: new Date(created_after)
+        };
+      }
+
+      total = await prisma.clients.count({ where });
+
+      outlets = await prisma.clients.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          balance: true,
+          address: true,
+          latitude: true,
+          longitude: true,
+          created_at: true,
+          discountPercentage: true,
+        },
+        skip: Math.max(0, skip),
+        take: Math.min(Number(limit), 2000),
+        orderBy: [
+          { name: 'asc' },
+          { id: 'asc' }
+        ]
+      });
+
+      console.log(`[DEBUG] Manager/Admin ${req.user.id} found ${total} total outlets, returning ${outlets.length}`);
     }
-
-    // Get total count for pagination
-    const total = await prisma.clients.count({ where });
-
-    const outlets = await prisma.clients.findMany({
-      where,
-      select: {
-        id: true,
-        name: true,
-        balance: true,
-        address: true,
-        latitude: true,
-        longitude: true,
-        created_at: true,
-        discountPercentage: true,
-        // Add any frequently used fields to avoid separate queries
-      },
-      skip: Math.max(0, skip), // Ensure skip is never negative
-      take: Math.min(Number(limit), 2000), // Enforce maximum limit and faster conversion
-      orderBy: [
-        { name: 'asc' }, // Primary sort
-        { id: 'asc' } // Secondary sort for consistent pagination
-      ]
-    });
 
     // Add default value for balance if it's null/undefined
     const outletsWithDefaultBalance = outlets.map(outlet => ({
@@ -84,6 +165,8 @@ const getOutlets = async (req, res) => {
       discountPercentage: outlet.discountPercentage || 0,
       created_at: outlet.created_at?.toISOString() ?? null,
     }));
+
+    console.log(`[DEBUG] Final response for user ${req.user.id}: ${outletsWithDefaultBalance.length} outlets`);
 
     res.json({
       data: outletsWithDefaultBalance,
@@ -125,30 +208,45 @@ const createOutlet = async (req, res) => {
   }
 
   try {
-    const newOutlet = await prisma.clients.create({
-      data: {
-        name,
-        address,
-        contact,
-        client_type: 1,
-        ...(balance !== undefined && { balance: balance.toString() }),
-        ...(email && { email }),
-        tax_pin: req.body.tax_pin || "0",
-        location: req.body.location || "Unknown",
-        latitude,
-        longitude,
-        countryId: req.user.countryId, // Get countryId from logged-in user
-        region_id: parseInt(region_id),
-        region: region || "Unknown",
-        route_id: route_id ? parseInt(route_id) : null,
-        route_id_update: route_id ? parseInt(route_id) : null,
-        route_name_update: req.user.route_name || "Unknown",
-        added_by: req.user.id,
-        created_at: new Date(),
-        discountPercentage: discountPercentage ? parseFloat(discountPercentage) : 0,
-      },
+    // Create outlet and assignment in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      const newOutlet = await tx.clients.create({
+        data: {
+          name,
+          address,
+          contact,
+          client_type: 1,
+          ...(balance !== undefined && { balance: balance.toString() }),
+          ...(email && { email }),
+          tax_pin: req.body.tax_pin || "0",
+          location: req.body.location || "Unknown",
+          latitude,
+          longitude,
+          countryId: req.user.countryId,
+          region_id: parseInt(region_id),
+          region: region || "Unknown",
+          route_id: route_id ? parseInt(route_id) : null,
+          route_id_update: route_id ? parseInt(route_id) : null,
+          route_name_update: req.user.route_name || "Unknown",
+          added_by: req.user.id,
+          created_at: new Date(),
+          discountPercentage: discountPercentage ? parseFloat(discountPercentage) : 0,
+        },
+      });
+
+      // Create assignment for the sales rep who created the outlet
+      await tx.clientAssignment.create({
+        data: {
+          outletId: newOutlet.id,
+          salesRepId: req.user.id,
+          status: 'active'
+        }
+      });
+
+      return newOutlet;
     });
-    res.status(201).json(newOutlet);
+
+    res.status(201).json(result);
   } catch (error) {
     console.error('Error creating outlet:', error);
     res.status(500).json({ error: 'Failed to create outlet' });
@@ -464,6 +562,141 @@ const getClientDiscount = async (req, res) => {
   }
 };
 
+// Assign outlet to sales rep
+const assignOutletToSalesRep = async (req, res) => {
+  try {
+    const { outletId, salesRepId } = req.body;
+
+    if (!outletId || !salesRepId) {
+      return res.status(400).json({ error: 'Outlet ID and Sales Rep ID are required' });
+    }
+
+    // Check if assignment already exists
+    const existingAssignment = await prisma.clientAssignment.findUnique({
+      where: {
+        outletId_salesRepId: {
+          outletId: parseInt(outletId),
+          salesRepId: parseInt(salesRepId)
+        }
+      }
+    });
+
+    if (existingAssignment) {
+      // Update status to active if it was inactive
+      if (existingAssignment.status !== 'active') {
+        await prisma.clientAssignment.update({
+          where: { id: existingAssignment.id },
+          data: { status: 'active' }
+        });
+      }
+      return res.status(200).json({ message: 'Assignment already exists and is now active' });
+    }
+
+    // Create new assignment
+    const assignment = await prisma.clientAssignment.create({
+      data: {
+        outletId: parseInt(outletId),
+        salesRepId: parseInt(salesRepId),
+        status: 'active'
+      }
+    });
+
+    res.status(201).json(assignment);
+  } catch (error) {
+    console.error('Error assigning outlet:', error);
+    res.status(500).json({ error: 'Failed to assign outlet' });
+  }
+};
+
+// Remove outlet assignment from sales rep
+const removeOutletAssignment = async (req, res) => {
+  try {
+    const { outletId, salesRepId } = req.params;
+
+    const assignment = await prisma.clientAssignment.findUnique({
+      where: {
+        outletId_salesRepId: {
+          outletId: parseInt(outletId),
+          salesRepId: parseInt(salesRepId)
+        }
+      }
+    });
+
+    if (!assignment) {
+      return res.status(404).json({ error: 'Assignment not found' });
+    }
+
+    // Soft delete by setting status to inactive
+    await prisma.clientAssignment.update({
+      where: { id: assignment.id },
+      data: { status: 'inactive' }
+    });
+
+    res.json({ message: 'Assignment removed successfully' });
+  } catch (error) {
+    console.error('Error removing assignment:', error);
+    res.status(500).json({ error: 'Failed to remove assignment' });
+  }
+};
+
+// Get assignments for an outlet
+const getOutletAssignments = async (req, res) => {
+  try {
+    const { outletId } = req.params;
+
+    const assignments = await prisma.clientAssignment.findMany({
+      where: {
+        outletId: parseInt(outletId),
+        status: 'active'
+      },
+      include: {
+        salesRep: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phoneNumber: true
+          }
+        }
+      }
+    });
+
+    res.json(assignments);
+  } catch (error) {
+    console.error('Error fetching outlet assignments:', error);
+    res.status(500).json({ error: 'Failed to fetch outlet assignments' });
+  }
+};
+
+// Get assignments for a sales rep
+const getSalesRepAssignments = async (req, res) => {
+  try {
+    const { salesRepId } = req.params;
+
+    const assignments = await prisma.clientAssignment.findMany({
+      where: {
+        salesRepId: parseInt(salesRepId),
+        status: 'active'
+      },
+      include: {
+        outlet: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            balance: true
+          }
+        }
+      }
+    });
+
+    res.json(assignments);
+  } catch (error) {
+    console.error('Error fetching sales rep assignments:', error);
+    res.status(500).json({ error: 'Failed to fetch sales rep assignments' });
+  }
+};
+
 module.exports = {
   getOutlets,
   createOutlet,
@@ -475,4 +708,8 @@ module.exports = {
   updateOutletLocation,
   updateClientDiscount,
   getClientDiscount,
+  assignOutletToSalesRep,
+  removeOutletAssignment,
+  getOutletAssignments,
+  getSalesRepAssignments,
 };
