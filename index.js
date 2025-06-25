@@ -137,7 +137,6 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/journey-plans', journeyPlanRoutes);
 app.use('/api/outlets', outletRoutes);
 app.use('/api/checkin', checkinRoutes);
-app.use('/api/office', officeRoutes);
 app.use('/api/notice-board', noticeBoardRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/reports', reportRoutes);
