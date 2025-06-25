@@ -178,7 +178,7 @@ const recordLogin = async (req, res) => {
         isEarly: false,
         status: isLate ? 'LATE' : 'ON_TIME'
       },
-      include: { user: true }
+      include: { salesRep: true }
     });
 
     console.log('✅ SESSION STARTED:', {
