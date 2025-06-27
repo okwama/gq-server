@@ -20,6 +20,13 @@ const upload = multer({
 
 // Ensure salesRepId is not null
 const getSalesRepId = (req) => {
+  // Check if authentication failed but request should still proceed
+  if (req.authFailed) {
+    console.log('⚠️ Authentication failed but allowing request to proceed');
+    // Return a default or null value to indicate no authenticated user
+    return null;
+  }
+  
   if (!req.user || !req.user.id) {
     throw new Error('SalesRep authentication required');
   }
@@ -29,6 +36,16 @@ const getSalesRepId = (req) => {
 // Create a new journey plan
 const createJourneyPlan = async (req, res) => {
   try {
+    // Check if authentication failed
+    if (req.authFailed) {
+      console.log('⚠️ Authentication failed for create journey plan request');
+      return res.status(401).json({ 
+        error: 'Authentication required for creating journey plans',
+        authError: req.authError || 'Authentication failed',
+        requiresReauth: true
+      });
+    }
+
     const { clientId, date, notes, showUpdateLocation, routeId } = req.body;
     const salesRepId = req.user.id;
 
@@ -138,7 +155,28 @@ const createJourneyPlan = async (req, res) => {
 // This function only fetches journey plans for the current day
 const getJourneyPlans = async (req, res) => {
   try {
+    // Check if authentication failed
+    if (req.authFailed) {
+      console.log('⚠️ Authentication failed for journey plans request, returning empty result');
+      return res.status(200).json({ 
+        success: true, 
+        data: [],
+        authWarning: req.authError || 'Authentication failed but request allowed',
+        requiresReauth: true
+      });
+    }
+
     const salesRepId = getSalesRepId(req);
+
+    // If no salesRepId (authentication failed), return empty result
+    if (!salesRepId) {
+      return res.status(200).json({ 
+        success: true, 
+        data: [],
+        authWarning: 'No authenticated user found',
+        requiresReauth: true
+      });
+    }
 
     // Get timezone from query params or use Nairobi as default
     const timezone = req.query.timezone || 'Africa/Nairobi';
@@ -183,7 +221,13 @@ const getJourneyPlans = async (req, res) => {
     console.error('Error fetching journey plans:', error);
     
     if (error.message === 'SalesRep authentication required') {
-      return res.status(401).json({ error: 'Authentication required' });
+      // Instead of returning 401, return empty result with auth warning
+      return res.status(200).json({ 
+        success: true, 
+        data: [],
+        authWarning: 'Authentication required but request allowed',
+        requiresReauth: true
+      });
     }
     
     res.status(500).json({ 
@@ -201,6 +245,16 @@ const updateJourneyPlan = async (req, res) => {
       return res.status(400).json({ error: 'File upload error: ' + err.message });
     } else if (err) {
       return res.status(400).json({ error: err.message });
+    }
+
+    // Check if authentication failed
+    if (req.authFailed) {
+      console.log('⚠️ Authentication failed for update journey plan request');
+      return res.status(401).json({ 
+        error: 'Authentication required for updating journey plans',
+        authError: req.authError || 'Authentication failed',
+        requiresReauth: true
+      });
     }
 
     const { journeyId } = req.params;
@@ -338,9 +392,19 @@ const updateJourneyPlan = async (req, res) => {
 
 // Delete a journey plan with status 0
 const deleteJourneyPlan = async (req, res) => {
-  const { journeyId } = req.params;
-
   try {
+    // Check if authentication failed
+    if (req.authFailed) {
+      console.log('⚠️ Authentication failed for delete journey plan request');
+      return res.status(401).json({ 
+        error: 'Authentication required for deleting journey plans',
+        authError: req.authError || 'Authentication failed',
+        requiresReauth: true
+      });
+    }
+
+    const { journeyId } = req.params;
+
     // Check if the journey plan exists and has status 0
     const journeyPlan = await prisma.journeyPlan.findUnique({
       where: { id: parseInt(journeyId) },

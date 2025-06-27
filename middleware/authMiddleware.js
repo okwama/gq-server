@@ -46,7 +46,7 @@ const generateNewTokens = async (userId, role) => {
   }
 };
 
-// Enhanced authentication middleware with automatic retry
+// Enhanced authentication middleware with automatic retry and fallback for unauthorized requests
 const authenticateTokenWithRetry = async (req, res, next) => {
   const maxRetries = 1; // Only retry once to avoid infinite loops
   let retryCount = 0;
@@ -57,7 +57,12 @@ const authenticateTokenWithRetry = async (req, res, next) => {
       const token = authHeader && authHeader.split(' ')[1];
 
       if (!token) {
-        return res.status(401).json({ error: 'Access token required' });
+        // Instead of returning 401, set a flag and continue
+        req.authFailed = true;
+        req.authError = 'Access token required';
+        console.log('⚠️ No token provided, allowing request to proceed with authFailed flag');
+        next();
+        return;
       }
 
       // Verify the token first
@@ -67,10 +72,11 @@ const authenticateTokenWithRetry = async (req, res, next) => {
         
         // Check if it's an access token
         if (decoded.type !== 'access') {
-          return res.status(401).json({ 
-            error: 'Invalid token type. Access token required.',
-            code: 'INVALID_TOKEN_TYPE'
-          });
+          req.authFailed = true;
+          req.authError = 'Invalid token type. Access token required.';
+          console.log('⚠️ Invalid token type, allowing request to proceed with authFailed flag');
+          next();
+          return;
         }
       } catch (jwtError) {
         if (jwtError.name === 'TokenExpiredError') {
@@ -136,13 +142,18 @@ const authenticateTokenWithRetry = async (req, res, next) => {
             }
           }
           
-          return res.status(401).json({ 
-            error: 'Access token expired. Please login again.',
-            code: 'TOKEN_EXPIRED',
-            autoRefreshFailed: true
-          });
+          // Instead of returning 401, set a flag and continue
+          req.authFailed = true;
+          req.authError = 'Access token expired. Please login again.';
+          console.log('⚠️ Token refresh failed, allowing request to proceed with authFailed flag');
+          next();
+          return;
         }
-        return res.status(401).json({ error: 'Invalid token' });
+        req.authFailed = true;
+        req.authError = 'Invalid token';
+        console.log('⚠️ Invalid token, allowing request to proceed with authFailed flag');
+        next();
+        return;
       }
 
       // Try to check token in database
@@ -182,7 +193,11 @@ const authenticateTokenWithRetry = async (req, res, next) => {
           });
 
           if (!user) {
-            return res.status(401).json({ error: 'User not found' });
+            req.authFailed = true;
+            req.authError = 'User not found';
+            console.log('⚠️ User not found, allowing request to proceed with authFailed flag');
+            next();
+            return;
           }
 
           // Blacklist the old token
@@ -220,10 +235,12 @@ const authenticateTokenWithRetry = async (req, res, next) => {
           return await attemptAuthentication();
         } catch (refreshError) {
           console.error('Failed to refresh tokens:', refreshError);
-          return res.status(401).json({ 
-            error: 'Token validation failed. Please login again.',
-            code: 'TOKEN_REFRESH_FAILED'
-          });
+          // Instead of returning 401, set a flag and continue
+          req.authFailed = true;
+          req.authError = 'Token validation failed. Please login again.';
+          console.log('⚠️ Token refresh failed, allowing request to proceed with authFailed flag');
+          next();
+          return;
         }
       }
 
@@ -253,7 +270,11 @@ const authenticateTokenWithRetry = async (req, res, next) => {
       }
 
       if (!user) {
-        return res.status(401).json({ error: 'User not found' });
+        req.authFailed = true;
+        req.authError = 'User not found';
+        console.log('⚠️ User not found, allowing request to proceed with authFailed flag');
+        next();
+        return;
       }
 
       // Update last used timestamp if we have a token record and database is available
@@ -277,10 +298,15 @@ const authenticateTokenWithRetry = async (req, res, next) => {
       req.user = user;
       req.token = token;
       req.tokensRefreshed = false;
+      req.authFailed = false;
       next();
     } catch (error) {
       console.error('Authentication error:', error);
-      return res.status(500).json({ error: 'Internal server error' });
+      // Instead of returning 500, set a flag and continue
+      req.authFailed = true;
+      req.authError = 'Internal server error during authentication';
+      console.log('⚠️ Authentication error, allowing request to proceed with authFailed flag');
+      next();
     }
   };
 
@@ -295,7 +321,12 @@ const authenticateToken = async (req, res, next) => {
     const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
-      return res.status(401).json({ error: 'Access token required' });
+      // Instead of returning 401, set a flag and continue
+      req.authFailed = true;
+      req.authError = 'Access token required';
+      console.log('⚠️ No token provided, allowing request to proceed with authFailed flag');
+      next();
+      return;
     }
 
     // Verify the token first
@@ -305,10 +336,11 @@ const authenticateToken = async (req, res, next) => {
       
       // Check if it's an access token
       if (decoded.type !== 'access') {
-        return res.status(401).json({ 
-          error: 'Invalid token type. Access token required.',
-          code: 'INVALID_TOKEN_TYPE'
-        });
+        req.authFailed = true;
+        req.authError = 'Invalid token type. Access token required.';
+        console.log('⚠️ Invalid token type, allowing request to proceed with authFailed flag');
+        next();
+        return;
       }
     } catch (jwtError) {
       if (jwtError.name === 'TokenExpiredError') {
@@ -353,13 +385,18 @@ const authenticateToken = async (req, res, next) => {
           }
         }
         
-        return res.status(401).json({ 
-          error: 'Access token expired. Please login again.',
-          code: 'TOKEN_EXPIRED',
-          autoRefreshFailed: true
-        });
+        // Instead of returning 401, set a flag and continue
+        req.authFailed = true;
+        req.authError = 'Access token expired. Please login again.';
+        console.log('⚠️ Token refresh failed, allowing request to proceed with authFailed flag');
+        next();
+        return;
       }
-      return res.status(401).json({ error: 'Invalid token' });
+      req.authFailed = true;
+      req.authError = 'Invalid token';
+      console.log('⚠️ Invalid token, allowing request to proceed with authFailed flag');
+      next();
+      return;
     }
 
     // Try to check token in database
@@ -399,7 +436,11 @@ const authenticateToken = async (req, res, next) => {
         });
 
         if (!user) {
-          return res.status(401).json({ error: 'User not found' });
+          req.authFailed = true;
+          req.authError = 'User not found';
+          console.log('⚠️ User not found, allowing request to proceed with authFailed flag');
+          next();
+          return;
         }
 
         // Blacklist the old token
@@ -432,10 +473,12 @@ const authenticateToken = async (req, res, next) => {
         return;
       } catch (refreshError) {
         console.error('Failed to refresh tokens:', refreshError);
-        return res.status(401).json({ 
-          error: 'Token validation failed. Please login again.',
-          code: 'TOKEN_REFRESH_FAILED'
-        });
+        // Instead of returning 401, set a flag and continue
+        req.authFailed = true;
+        req.authError = 'Token validation failed. Please login again.';
+        console.log('⚠️ Token refresh failed, allowing request to proceed with authFailed flag');
+        next();
+        return;
       }
     }
 
@@ -465,7 +508,11 @@ const authenticateToken = async (req, res, next) => {
     }
 
     if (!user) {
-      return res.status(401).json({ error: 'User not found' });
+      req.authFailed = true;
+      req.authError = 'User not found';
+      console.log('⚠️ User not found, allowing request to proceed with authFailed flag');
+      next();
+      return;
     }
 
     // Update last used timestamp if we have a token record and database is available
@@ -489,10 +536,15 @@ const authenticateToken = async (req, res, next) => {
     req.user = user;
     req.token = token;
     req.tokensRefreshed = false;
+    req.authFailed = false;
     next();
   } catch (error) {
     console.error('Authentication error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    // Instead of returning 500, set a flag and continue
+    req.authFailed = true;
+    req.authError = 'Internal server error during authentication';
+    console.log('⚠️ Authentication error, allowing request to proceed with authFailed flag');
+    next();
   }
 };
 
